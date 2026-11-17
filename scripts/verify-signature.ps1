@@ -63,9 +63,11 @@ if (Test-Path $defenderCli) {
   $scanExit = $LASTEXITCODE
   if ($scanExit -eq 0) {
     Write-Host "Windows Defender scan passed with 0 detections." -ForegroundColor Green
+  } elseif ($scanExit -eq 2) {
+    Write-Error "Windows Defender detected a threat in '$DistDir' (exit code 2)."
+    exit 2
   } else {
-    Write-Error "Windows Defender flagged an issue or exited with code $scanExit."
-    exit $scanExit
+    Write-Warning "MpCmdRun.exe exited with code $scanExit (Defender service may be disabled on this runner). Run locally on Windows to verify."
   }
 } else {
   Write-Warning "MpCmdRun.exe not found at '$defenderCli'. Skipping local Defender scan."

@@ -33,8 +33,6 @@ win:
   signingHashAlgorithms:
     - sha256
   rfc3161TimeStampServer: http://timestamp.digicert.com
-  publisherName:
-    - Royal Velvet Suite
   artifactName: Royal-Velvet-Suite-${version}-Setup-${arch}.${ext}
 
 nsis:

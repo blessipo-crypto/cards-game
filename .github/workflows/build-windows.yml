@@ -19,16 +19,10 @@ jobs:
           node-version: 22
 
       - name: Install application dependencies
-        shell: pwsh
-        run: |
-          if (Test-Path "package-lock.json") {
-            npm ci --legacy-peer-deps --no-audit --no-fund
-          } else {
-            npm install --legacy-peer-deps --no-audit --no-fund
-          }
+        run: npm install --no-audit --no-fund
 
       - name: Install Electron desktop packager (CI only)
-        run: npm install --no-save --legacy-peer-deps --no-audit --no-fund electron electron-builder
+        run: npm install --save-dev --no-audit --no-fund electron electron-builder
 
       - name: Generate Windows application icon
         run: npm run build:icon
@@ -38,11 +32,12 @@ jobs:
 
       - name: Build Windows NSIS Setup & Portable EXE
         shell: pwsh
-        env:
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: |
-          npx electron-builder --win --x64 --publish never
+          if (-not [string]::IsNullOrEmpty("${{ secrets.WIN_CSC_LINK }}")) {
+            $env:WIN_CSC_LINK = "${{ secrets.WIN_CSC_LINK }}"
+            $env:WIN_CSC_KEY_PASSWORD = "${{ secrets.WIN_CSC_KEY_PASSWORD }}"
+          }
+          npx electron-builder --config electron-builder.yml --win --x64 --publish never
 
       - name: Verify Authenticode Signature & Run Windows Defender Scan
         shell: pwsh
