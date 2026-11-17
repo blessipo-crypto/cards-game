@@ -1,0 +1,6 @@
+{
+  "name": "Le Salon Privé — Blackjack",
+  "description": "An opulent Monte Carlo blackjack salon with real-time dealer play, velvet table aesthetics, realistic chip stacks, and classic casino rules.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
