@@ -22,13 +22,13 @@ jobs:
         shell: pwsh
         run: |
           if (Test-Path "package-lock.json") {
-            npm ci
+            npm ci --legacy-peer-deps --no-audit --no-fund
           } else {
-            npm install --no-audit --no-fund
+            npm install --legacy-peer-deps --no-audit --no-fund
           }
 
       - name: Install Electron desktop packager (CI only)
-        run: npm install --no-save --no-audit --no-fund electron electron-builder
+        run: npm install --no-save --legacy-peer-deps --no-audit --no-fund electron electron-builder
 
       - name: Generate Windows application icon
         run: npm run build:icon
