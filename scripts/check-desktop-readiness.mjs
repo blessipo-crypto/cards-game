@@ -92,7 +92,17 @@ if (builderPath) {
   console.log('[OK] electron-builder.yml verified (NSIS + Uninstaller + asInvoker + SHA-256 + RFC3161)');
 }
 
-// 5. Check Windows verification script & CI workflow
+// 5. Check custom signing hook, Windows verification script & CI workflow
+const winSignPath = assertExists('scripts/win-sign.cjs');
+if (winSignPath) {
+  execFileSync(process.execPath, ['--check', winSignPath]);
+  const signSrc = fs.readFileSync(winSignPath, 'utf8');
+  if (!signSrc.includes('exports.default')) {
+    errors.push('scripts/win-sign.cjs must export exports.default async function(configuration)');
+  } else {
+    console.log('[OK] scripts/win-sign.cjs passes syntax check and exports.default hook');
+  }
+}
 assertExists('scripts/verify-signature.ps1');
 assertExists('.github/workflows/build-windows.yml');
 console.log('[OK] scripts/verify-signature.ps1 and .github/workflows/build-windows.yml present');

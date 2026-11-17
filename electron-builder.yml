@@ -29,12 +29,11 @@ win:
   icon: build/icon.ico
   # asInvoker avoids UAC elevation triggers and reduces Windows SmartScreen/AV suspicion
   requestedExecutionLevel: asInvoker
-  signAndEditExecutable: true
   signtoolOptions:
+    sign: scripts/win-sign.cjs
     signingHashAlgorithms:
       - sha256
     rfc3161TimeStampServer: http://timestamp.digicert.com
-  artifactName: Royal-Velvet-Suite-${version}-Setup-${arch}.${ext}
 
 nsis:
   oneClick: false
