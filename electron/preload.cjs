@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('desktopBridge', {
   close: () => ipcRenderer.invoke('win:close'),
   isMaximized: () => ipcRenderer.invoke('win:is-maximized'),
   getDesktopInfo: () => ipcRenderer.invoke('app:get-desktop-info'),
+  verifyAuthenticode: (publisherNames) => ipcRenderer.invoke('app:verify-authenticode', publisherNames),
   onMaximizedChange: (callback) => {
     if (typeof callback !== 'function') {
       return () => {};

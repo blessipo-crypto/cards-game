@@ -29,6 +29,7 @@ win:
   icon: build/icon.ico
   # asInvoker avoids UAC elevation triggers and reduces Windows SmartScreen/AV suspicion
   requestedExecutionLevel: asInvoker
+  verifyUpdateCodeSignature: true
   signtoolOptions:
     sign: scripts/win-sign.cjs
     signingHashAlgorithms:

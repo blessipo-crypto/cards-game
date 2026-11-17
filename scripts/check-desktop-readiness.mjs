@@ -29,14 +29,16 @@ if (distHtmlPath) {
   }
 }
 
-// 2. Check Electron main & preload syntax and security settings
+// 2. Check Electron main, preload & Authenticode verifier syntax and security settings
 const mainPath = assertExists('electron/main.cjs');
 const preloadPath = assertExists('electron/preload.cjs');
-if (mainPath && preloadPath) {
+const verifyModPath = assertExists('electron/verify-signature.cjs');
+if (mainPath && preloadPath && verifyModPath) {
   try {
     execFileSync(process.execPath, ['--check', mainPath]);
     execFileSync(process.execPath, ['--check', preloadPath]);
-    console.log('[OK] electron/main.cjs and electron/preload.cjs pass Node syntax check');
+    execFileSync(process.execPath, ['--check', verifyModPath]);
+    console.log('[OK] electron/main.cjs, electron/preload.cjs, and electron/verify-signature.cjs pass Node syntax check');
   } catch (err) {
     errors.push(`Electron JS syntax check failed: ${err.message}`);
   }

@@ -1,3 +1,12 @@
+export type VerifyUpdateFileResult =
+  | { response: 'success' }
+  | { response: 'failure'; message: string };
+
+export type VerifyUpdateFileAuthenticodeSignature = (
+  publisherName: string[],
+  path: string
+) => Promise<VerifyUpdateFileResult>;
+
 export interface DesktopRuntimeInfo {
   isDesktop: boolean;
   version: string;
@@ -13,6 +22,7 @@ export interface DesktopBridgeAPI {
   close: () => Promise<void>;
   isMaximized: () => Promise<boolean>;
   getDesktopInfo: () => Promise<DesktopRuntimeInfo>;
+  verifyAuthenticode: (publisherNames?: string[]) => Promise<VerifyUpdateFileResult>;
   onMaximizedChange: (callback: (maximized: boolean) => void) => () => void;
 }
 

@@ -2,6 +2,7 @@
 
 const { app, BrowserWindow, ipcMain, Menu, shell } = require('electron');
 const path = require('path');
+const verifyUpdateFileAuthenticodeSignature = require('./verify-signature.cjs');
 
 const APP_TITLE = 'Royal Velvet Suite';
 const DEV_URL = process.env.VITE_DEV_SERVER_URL || 'http://localhost:3000';
@@ -138,3 +139,10 @@ ipcMain.handle('app:get-desktop-info', () => ({
   platform: process.platform,
   isPackaged: app.isPackaged,
 }));
+
+ipcMain.handle('app:verify-authenticode', async (_event, publisherNames) => {
+  const publishers = Array.isArray(publisherNames) && publisherNames.length > 0
+    ? publisherNames
+    : ['Royal Velvet Suite'];
+  return verifyUpdateFileAuthenticodeSignature(publishers, process.execPath);
+});
