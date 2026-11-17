@@ -46,7 +46,6 @@ nsis:
   uninstallDisplayName: Royal Velvet Suite
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico
-  include: build/installer.nsh
   deleteAppDataOnUninstall: false
   artifactName: Royal-Velvet-Suite-${version}-Setup-${arch}.${ext}
 

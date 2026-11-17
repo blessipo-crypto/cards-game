@@ -13,9 +13,10 @@ export type Rank =
   | '10'
   | 'J'
   | 'Q'
-  | 'K';
+  | 'K'
+  | 'JOKER';
 
-export type SalonGameId = 'belote' | 'bridge' | 'poker' | 'blackjack' | 'baccarat';
+export type SalonGameId = 'belote' | 'bridge' | 'canasta' | 'poker' | 'blackjack' | 'baccarat';
 
 export type SalonCategory = 'all' | 'trick_taking' | 'casino_bank';
 
@@ -42,6 +43,22 @@ export interface BridgeBidCall {
   type: 'BID' | 'PASS' | 'DOUBLE' | 'REDOUBLE';
   level?: number; // 1..7
   strain?: BridgeStrain;
+}
+
+export type CanastaVariantId = 'classic' | 'modern' | 'hand_and_foot' | 'samba' | 'bolivia';
+
+export type CanastaMeldKind = 'rank' | 'wild' | 'sequence';
+
+export interface CanastaMeld {
+  id: string;
+  team: 'NS' | 'EW';
+  kind: CanastaMeldKind;
+  rankLabel: string;
+  suit?: Suit;
+  cards: CardData[];
+  isPure: boolean;
+  isCanasta: boolean;
+  bonus: number;
 }
 
 export type PokerStreet = 'READY' | 'PREFLOP' | 'FLOP' | 'TURN' | 'RIVER' | 'SHOWDOWN';

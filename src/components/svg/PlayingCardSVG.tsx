@@ -43,8 +43,9 @@ export const PlayingCardSVG: React.FC<PlayingCardSVGProps> = ({
   const uid = useId().replace(/:/g, '');
   const dims = SIZE_MAP[size];
   const isRed = card.suit === 'hearts' || card.suit === 'diamonds';
-  const inkColor = isRed ? '#9E1B24' : '#111520';
-  const isCourt = card.rank === 'J' || card.rank === 'Q' || card.rank === 'K' || card.rank === 'A';
+  const isJoker = card.rank === 'JOKER';
+  const inkColor = isJoker ? '#9C781C' : isRed ? '#9E1B24' : '#111520';
+  const isCourt = card.rank === 'J' || card.rank === 'Q' || card.rank === 'K' || card.rank === 'A' || isJoker;
   const hcp = showHcp ? getCardHCP(card) : 0;
 
   return (
@@ -52,7 +53,13 @@ export const PlayingCardSVG: React.FC<PlayingCardSVGProps> = ({
       type="button"
       disabled={!onClick || !playable}
       onClick={playable && onClick ? onClick : undefined}
-      aria-label={card.faceUp ? `${card.rank} de ${card.suit}` : 'Carte face cachée'}
+      aria-label={
+        card.faceUp
+          ? isJoker
+            ? 'Joker'
+            : `${card.rank} de ${card.suit}`
+          : 'Carte face cachée'
+      }
       style={{ width: dims.w, height: dims.h }}
       className={`group relative shrink-0 select-none rounded-[12px] text-left transition-all duration-200 ${
         playable
@@ -116,9 +123,9 @@ export const PlayingCardSVG: React.FC<PlayingCardSVGProps> = ({
           <circle cx="10.5" cy="129.5" r="1" fill="#D4AF37" fillOpacity="0.6" />
           <circle cx="89.5" cy="129.5" r="1" fill="#D4AF37" fillOpacity="0.6" />
 
-          {/* Court / Ace Royal Medallion */}
+          {/* Court / Ace / Joker Royal Medallion */}
           {isCourt && (
-            <g opacity="0.22">
+            <g opacity={isJoker ? '0.45' : '0.22'}>
               <circle cx="50" cy="70" r="24" fill="none" stroke="#D4AF37" strokeWidth="1.2" />
               <polygon
                 points="50,43 74,70 50,97 26,70"
@@ -202,36 +209,58 @@ export const PlayingCardSVG: React.FC<PlayingCardSVGProps> = ({
           {/* Top-Left Index */}
           <div className="flex flex-col items-center self-start leading-none">
             <span
-              className={`font-display font-bold tracking-tight ${dims.rankCls}`}
+              className={`font-display font-bold tracking-tight ${isJoker ? 'text-[9px]' : dims.rankCls}`}
               style={{ color: inkColor }}
             >
-              {card.rank}
+              {isJoker ? '★' : card.rank}
             </span>
-            <SuitIconSVG suit={card.suit} className={dims.pipCls} />
+            {!isJoker && <SuitIconSVG suit={card.suit} className={dims.pipCls} />}
           </div>
 
-          {/* Center Pip or Court Crest */}
+          {/* Center Pip or Royal Joker Crown */}
           <div className="flex flex-col items-center justify-center">
-            <SuitIconSVG suit={card.suit} className={dims.centerCls} />
-            {isCourt && card.rank !== 'A' && (
-              <span
-                className="font-display -mt-0.5 text-[10px] font-bold tracking-widest"
-                style={{ color: '#9C781C' }}
-              >
-                {card.rank}
+            {isJoker ? (
+              <svg viewBox="0 0 40 40" className={dims.centerCls} aria-hidden="true">
+                <path
+                  d="M6 28 L9 12 L16 20 L20 8 L24 20 L31 12 L34 28 Z"
+                  fill="#9C781C"
+                  stroke="#9E1B24"
+                  strokeWidth="1.5"
+                />
+                <circle cx="9" cy="11" r="2.2" fill="#9E1B24" />
+                <circle cx="20" cy="7" r="2.5" fill="#9E1B24" />
+                <circle cx="31" cy="11" r="2.2" fill="#9E1B24" />
+                <rect x="7" y="29" width="26" height="3.5" rx="1.5" fill="#111520" />
+              </svg>
+            ) : (
+              <SuitIconSVG suit={card.suit} className={dims.centerCls} />
+            )}
+            {isJoker ? (
+              <span className="font-display text-[8px] font-bold tracking-widest text-[#9E1B24]">
+                JOKER
               </span>
+            ) : (
+              isCourt &&
+              card.rank !== 'A' && (
+                <span
+                  className="font-display -mt-0.5 text-[10px] font-bold tracking-widest"
+                  style={{ color: '#9C781C' }}
+                >
+                  {card.rank}
+                </span>
+              )
             )}
           </div>
 
           {/* Bottom-Right Mirrored Index */}
           <div className="flex rotate-180 flex-col items-center self-end leading-none">
             <span
-              className={`font-display font-bold tracking-tight ${dims.rankCls}`}
+              className={`font-display font-bold tracking-tight ${isJoker ? 'text-[9px]' : dims.rankCls}`}
               style={{ color: inkColor }}
             >
-              {card.rank}
+              {isJoker ? '★' : card.rank}
             </span>
-            <SuitIconSVG suit={card.suit} className={dims.pipCls} />
+            {!isJoker && <SuitIconSVG suit={card.suit} className={dims.pipCls} />}
           </div>
         </div>
       )}

@@ -64,17 +64,7 @@ if (icoPath) {
   }
 }
 
-// 4. Check NSIS uninstaller hooks & electron-builder config
-const nshPath = assertExists('build/installer.nsh');
-if (nshPath) {
-  const nsh = fs.readFileSync(nshPath, 'utf8');
-  if (!nsh.includes('customInstall') || !nsh.includes('customUnInstall') || !nsh.includes('Uninstall')) {
-    errors.push('build/installer.nsh missing customInstall / customUnInstall / Uninstall registry registration');
-  } else {
-    console.log('[OK] build/installer.nsh defines install registry + uninstaller cleanup hooks');
-  }
-}
-
+// 4. Check electron-builder config (NSIS + Uninstaller + asInvoker + SHA-256 + RFC3161)
 const builderPath = assertExists('electron-builder.yml');
 if (builderPath) {
   const yml = fs.readFileSync(builderPath, 'utf8');
@@ -85,7 +75,6 @@ if (builderPath) {
     'sha256',
     'rfc3161TimeStampServer:',
     'uninstallDisplayName:',
-    'include: build/installer.nsh',
   ]) {
     if (!yml.includes(needle)) {
       errors.push(`electron-builder.yml missing required setting: ${needle}`);

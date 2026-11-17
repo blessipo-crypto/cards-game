@@ -5,6 +5,7 @@ import { BaccaratTable } from './components/tables/BaccaratTable';
 import { BeloteTable } from './components/tables/BeloteTable';
 import { BlackjackTable } from './components/tables/BlackjackTable';
 import { BridgeTable } from './components/tables/BridgeTable';
+import { CanastaTable } from './components/tables/CanastaTable';
 import { PokerTable } from './components/tables/PokerTable';
 import { useSalonStore } from './store/useSalonStore';
 import { FeltThemeId } from './types/game';
@@ -40,6 +41,7 @@ export default function App() {
         {activeScreen === 'CONCIERGERIE' && <FrontDeskConciergerie />}
         {activeScreen === 'belote' && <BeloteTable />}
         {activeScreen === 'bridge' && <BridgeTable />}
+        {activeScreen === 'canasta' && <CanastaTable />}
         {activeScreen === 'poker' && <PokerTable />}
         {activeScreen === 'blackjack' && <BlackjackTable />}
         {activeScreen === 'baccarat' && <BaccaratTable />}

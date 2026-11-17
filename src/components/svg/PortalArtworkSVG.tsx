@@ -114,6 +114,28 @@ export const PortalArtworkSVG: React.FC<PortalArtworkSVGProps> = ({ game }) => {
           <text x="110" y="85.5" textAnchor="middle" fill="#F3E5AB" className="font-mono-num text-[7.5px] font-bold">BANCO 9</text>
         </g>
       )}
+
+      {game === 'canasta' && (
+        <g>
+          <g transform="translate(48,20) rotate(-11)">
+            <rect width="44" height="62" rx="6" fill={`url(#pIvory_${game})`} stroke="#D4AF37" strokeWidth="1.2" />
+            <text x="8" y="16" fill="#9E1B24" className="font-display text-[12px] font-bold">3</text>
+            <text x="15" y="40" fill="#9E1B24" className="text-[18px]">♥</text>
+          </g>
+          <g transform="translate(88,12)">
+            <rect width="44" height="62" rx="6" fill={`url(#pIvory_${game})`} stroke="#D4AF37" strokeWidth="1.4" />
+            <text x="8" y="16" fill="#111520" className="font-display text-[12px] font-bold">A</text>
+            <text x="15" y="40" fill="#111520" className="text-[18px]">♠</text>
+          </g>
+          <g transform="translate(128,20) rotate(11)">
+            <rect width="44" height="62" rx="6" fill={`url(#pIvory_${game})`} stroke="#D4AF37" strokeWidth="1.3" />
+            <text x="7" y="16" fill="#9C781C" className="font-display text-[11px] font-bold">★</text>
+            <text x="22" y="40" textAnchor="middle" fill="#9E1B24" className="font-display text-[9px] font-bold">JOKER</text>
+          </g>
+          <rect x="69" y="77" width="82" height="14" rx="2" fill="#0F3D2E" stroke="#D4AF37" strokeWidth="0.95" />
+          <text x="110" y="86.5" textAnchor="middle" fill="#F3E5AB" className="font-mono-num text-[7.5px] font-bold">CANASTA +500</text>
+        </g>
+      )}
     </svg>
   );
 };

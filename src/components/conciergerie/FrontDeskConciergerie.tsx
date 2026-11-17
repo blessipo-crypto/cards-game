@@ -38,6 +38,16 @@ const PORTALS: PortalDefinition[] = [
     specBadge: '52 Cartes · 13 Levées',
   },
   {
+    id: 'canasta',
+    category: 'trick_taking',
+    title: 'Canasta & Variantes',
+    subtitle: 'Classique · Moderne · Hand & Foot · Samba · Bolivia',
+    players: '4 Joueurs (N/S vs E/O)',
+    rulesSummary:
+      '5 variantes complètes : 3 Rouges (+100), Canastas Pures (+500) & Impures (+300), suites Samba (+1500) et Hand & Foot à 2 piles.',
+    specBadge: '2 à 4 Jeux + Jokers',
+  },
+  {
     id: 'poker',
     category: 'casino_bank',
     title: 'Texas Hold’em',
@@ -100,8 +110,8 @@ export const FrontDeskConciergerie: React.FC = () => {
         >
           {(
             [
-              { id: 'all', label: 'Tous les Salons (5)' },
-              { id: 'trick_taking', label: 'Jeux de Plis & Contrat' },
+              { id: 'all', label: 'Tous les Salons (6)' },
+              { id: 'trick_taking', label: 'Plis, Contrat & Canasta' },
               { id: 'casino_bank', label: 'Cercle & Banque' },
             ] as { id: SalonCategory; label: string }[]
           ).map((tab) => {
@@ -126,8 +136,8 @@ export const FrontDeskConciergerie: React.FC = () => {
         </div>
       </div>
 
-      {/* 5 Architectural Portals Grid */}
-      <main className="my-auto grid grid-cols-1 gap-4 py-3 md:grid-cols-3 lg:grid-cols-5">
+      {/* 6 Architectural Portals Grid */}
+      <main className="my-auto grid grid-cols-1 gap-3.5 py-3 md:grid-cols-3 xl:grid-cols-6">
         {visiblePortals.map((portal) => (
           <ChamferPanel
             key={portal.id}
@@ -237,7 +247,7 @@ export const FrontDeskConciergerie: React.FC = () => {
           </div>
           <div className="mt-1.5 space-y-1 text-[11px] text-[#C7BFB0] font-mono-num">
             <div>Rendu Vectoriel Pur SVG · Ratio 1:1.4</div>
-            <div>5 Moteurs : Belote 162 · Bridge 35 Enchères</div>
+            <div>6 Moteurs : Belote · Bridge · Canasta (5 Var.)</div>
             <div>Audio Synthétique Web Audio · 60 FPS</div>
           </div>
         </ChamferPanel>

@@ -7,6 +7,8 @@ import {
   BridgeBidCall,
   BridgeStrain,
   BridgeVulnerability,
+  CanastaMeld,
+  CanastaVariantId,
   CardData,
   ChipValue,
   FeltThemeId,
@@ -53,6 +55,24 @@ import {
   decidePokerAiAction,
   evaluateBestHoldemHand,
 } from '../utils/pokerLogic';
+import {
+  CANASTA_VARIANTS,
+  SEATS as CANASTA_SEATS,
+  calculateTeamRoundBreakdown,
+  canAddCardsToMeld,
+  canTeamGoOut,
+  chooseAiDiscard,
+  computeMeldMeta,
+  createCanastaShoe,
+  evaluateDiscardPickup,
+  evaluateSelectedNewMeld,
+  extractRedThreesFromCards,
+  getCanastaCardPoints,
+  getRequiredInitialMeld,
+  isBlackThree,
+  isWildCard,
+  sortCanastaHand,
+} from '../utils/canastaLogic';
 import { soundEngine } from '../utils/soundEngine';
 
 const STORAGE_KEY = 'royal_velvet_suite_v1';
@@ -223,6 +243,37 @@ export interface BaccaratSlice {
   statusText: string;
 }
 
+export interface CanastaSlice {
+  variant: CanastaVariantId;
+  phase: 'READY' | 'DRAW' | 'MELD_DISCARD' | 'ROUND_OVER';
+  dealer: SeatId;
+  currentTurn: SeatId;
+  stock: CardData[];
+  discardPile: CardData[];
+  isFrozen: boolean;
+  hands: Record<SeatId, CardData[]>;
+  feet: Record<SeatId, CardData[]>;
+  inFoot: Record<SeatId, boolean>;
+  redThrees: { NS: CardData[]; EW: CardData[] };
+  melds: CanastaMeld[];
+  nsScore: number;
+  ewScore: number;
+  nsOpened: boolean;
+  ewOpened: boolean;
+  pendingOpeningIds: string[];
+  pendingOpeningPoints: number;
+  selectedCardIds: string[];
+  hadMeldedBeforeTurn: boolean;
+  lastRoundBreakdown: {
+    nsTotal: number;
+    ewTotal: number;
+    nsCanastaBonus: number;
+    ewCanastaBonus: number;
+    winnerTeam: 'NS' | 'EW' | 'TIE';
+  } | null;
+  statusText: string;
+}
+
 interface SalonStoreState {
   activeScreen: 'CONCIERGERIE' | SalonGameId;
   feltTheme: FeltThemeId;
@@ -236,6 +287,7 @@ interface SalonStoreState {
 
   belote: BeloteSlice;
   bridge: BridgeSlice;
+  canasta: CanastaSlice;
   poker: PokerSlice;
   blackjack: BlackjackSlice;
   baccarat: BaccaratSlice;
@@ -259,6 +311,17 @@ interface SalonStoreState {
   bridgeNewDeal: () => void;
   bridgePlaceCall: (call: Omit<BridgeBidCall, 'seat'>) => void;
   bridgePlayCard: (cardId: string) => void;
+
+  // Canasta & Variants Actions
+  canastaSetVariant: (variant: CanastaVariantId) => void;
+  canastaNewDeal: () => void;
+  canastaDrawStock: () => void;
+  canastaTakePile: () => void;
+  canastaToggleSelectCard: (cardId: string) => void;
+  canastaMeldSelected: () => void;
+  canastaExtendMeld: (meldId: string) => void;
+  canastaCancelPendingOpening: () => void;
+  canastaDiscardSelected: () => void;
 
   // Poker Actions
   pokerStartHand: () => void;
@@ -698,6 +761,242 @@ export const useSalonStore = create<SalonStoreState>((set, get) => {
     settleBlackjack(hands, dCards);
   };
 
+  // --- CANASTA ROUND END & AI STEPPER ---
+  const finishCanastaRound = (
+    wentOutTeam: 'NS' | 'EW' | null,
+    concealedOut: boolean,
+    reasonText: string
+  ) => {
+    const c = get().canasta;
+    const nsUnmelded = [...c.hands.N, ...c.hands.S, ...c.feet.N, ...c.feet.S];
+    const ewUnmelded = [...c.hands.E, ...c.hands.W, ...c.feet.E, ...c.feet.W];
+
+    const nsBr = calculateTeamRoundBreakdown(
+      'NS',
+      c.melds,
+      c.redThrees.NS.length,
+      nsUnmelded,
+      wentOutTeam === 'NS',
+      wentOutTeam === 'NS' && concealedOut,
+      c.variant
+    );
+    const ewBr = calculateTeamRoundBreakdown(
+      'EW',
+      c.melds,
+      c.redThrees.EW.length,
+      ewUnmelded,
+      wentOutTeam === 'EW',
+      wentOutTeam === 'EW' && concealedOut,
+      c.variant
+    );
+
+    const nextNsScore = c.nsScore + nsBr.total;
+    const nextEwScore = c.ewScore + ewBr.total;
+    const winnerTeam: 'NS' | 'EW' | 'TIE' =
+      nsBr.total > ewBr.total ? 'NS' : ewBr.total > nsBr.total ? 'EW' : 'TIE';
+
+    const reward = winnerTeam === 'NS' ? 600 : winnerTeam === 'TIE' ? 200 : 0;
+    const delta = reward - 200;
+
+    set((st) => ({
+      bankroll: st.bankroll + reward,
+      canasta: {
+        ...c,
+        phase: 'ROUND_OVER',
+        selectedCardIds: [],
+        pendingOpeningIds: [],
+        pendingOpeningPoints: 0,
+        nsScore: nextNsScore,
+        ewScore: nextEwScore,
+        lastRoundBreakdown: {
+          nsTotal: nsBr.total,
+          ewTotal: ewBr.total,
+          nsCanastaBonus: nsBr.canastaBonus,
+          ewCanastaBonus: ewBr.canastaBonus,
+          winnerTeam,
+        },
+        statusText: `${reasonText} N/S ${nsBr.total >= 0 ? `+${nsBr.total}` : nsBr.total} pts vs E/O ${ewBr.total >= 0 ? `+${ewBr.total}` : ewBr.total} pts.`,
+      },
+    }));
+
+    logResult(
+      'canasta',
+      `Canasta ${CANASTA_VARIANTS[c.variant].shortName} · ${nsBr.total} vs ${ewBr.total}`,
+      delta,
+      winnerTeam === 'NS' ? true : winnerTeam === 'EW' ? false : null
+    );
+  };
+
+  const stepCanastaAi = () => {
+    const c = get().canasta;
+    if (c.phase === 'READY' || c.phase === 'ROUND_OVER' || c.currentTurn === 'S') return;
+
+    const seat = c.currentTurn;
+    const team: 'NS' | 'EW' = seat === 'N' ? 'NS' : 'EW';
+    const spec = CANASTA_VARIANTS[c.variant];
+
+    let stock = [...c.stock];
+    let discardPile = [...c.discardPile];
+    let isFrozen = c.isFrozen;
+    let hand = [...c.hands[seat]];
+    let feet = { ...c.feet };
+    let inFoot = { ...c.inFoot };
+    let redThrees = {
+      NS: [...c.redThrees.NS],
+      EW: [...c.redThrees.EW],
+    };
+    let melds = [...c.melds];
+    let nsOpened = c.nsOpened;
+    let ewOpened = c.ewOpened;
+
+    // 1. Draw from Stock (or stop if empty)
+    if (stock.length < spec.drawCount) {
+      finishCanastaRound(null, false, 'Pioche épuisée !');
+      return;
+    }
+
+    const drawnRaw: CardData[] = [];
+    for (let i = 0; i < spec.drawCount && stock.length > 0; i++) {
+      drawnRaw.push(stock.pop()!);
+    }
+    const extracted = extractRedThreesFromCards(drawnRaw, stock, false);
+    stock = extracted.stock;
+    redThrees[team] = [...redThrees[team], ...extracted.redThrees];
+    hand = [...hand, ...extracted.hand];
+    soundEngine.playCardDeal();
+
+    // 2. AI attempts extending existing team melds first
+    const teamOpened = team === 'NS' ? nsOpened : ewOpened;
+    if (teamOpened) {
+      for (let mIdx = 0; mIdx < melds.length; mIdx++) {
+        const m = melds[mIdx];
+        if (m.team !== team || m.kind !== 'rank') continue;
+        const matches = hand.filter((card) => card.rank === m.rankLabel && !isWildCard(card));
+        for (const match of matches) {
+          const res = canAddCardsToMeld([match], m, c.variant);
+          if (res.valid && res.nextCards && hand.length > 1) {
+            const meta = computeMeldMeta(res.nextCards, m.kind, c.variant, m.rankLabel);
+            melds[mIdx] = { ...m, cards: res.nextCards, ...meta };
+            hand = hand.filter((x) => x.id !== match.id);
+          }
+        }
+      }
+    }
+
+    // 3. AI checks if it can lay down a new 3+ rank meld
+    const requiredPts = getRequiredInitialMeld(team === 'NS' ? c.nsScore : c.ewScore, c.variant);
+    const byRank = new Map<string, CardData[]>();
+    for (const card of hand) {
+      if (isWildCard(card) || card.rank === '3') continue;
+      const arr = byRank.get(card.rank) || [];
+      arr.push(card);
+      byRank.set(card.rank, arr);
+    }
+
+    for (const [rank, group] of byRank.entries()) {
+      if (group.length >= 3 && hand.length - group.length >= 1) {
+        const evalRes = evaluateSelectedNewMeld(group, c.variant);
+        if (evalRes.valid && evalRes.sortedCards) {
+          if (teamOpened || evalRes.points >= requiredPts) {
+            const meta = computeMeldMeta(evalRes.sortedCards, 'rank', c.variant, rank);
+            melds.push({
+              id: `meld_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+              team,
+              kind: 'rank',
+              rankLabel: rank,
+              cards: evalRes.sortedCards.map((x) => ({ ...x, faceUp: true })),
+              ...meta,
+            });
+            const usedIds = new Set(group.map((x) => x.id));
+            hand = hand.filter((x) => !usedIds.has(x.id));
+            if (team === 'NS') nsOpened = true;
+            else ewOpened = true;
+            soundEngine.playChipClink(2);
+            break;
+          }
+        }
+      }
+    }
+
+    // 4. Hand & Foot transition if hand emptied
+    if (spec.hasFoot && hand.length === 0 && !inFoot[seat] && feet[seat].length > 0) {
+      const footExt = extractRedThreesFromCards(feet[seat], stock, false);
+      stock = footExt.stock;
+      redThrees[team] = [...redThrees[team], ...footExt.redThrees];
+      hand = footExt.hand;
+      feet = { ...feet, [seat]: [] };
+      inFoot = { ...inFoot, [seat]: true };
+    }
+
+    // 5. Check Going Out if hand has 0 or 1 card left
+    const goCheck = canTeamGoOut(
+      melds.filter((m) => m.team === team),
+      c.variant
+    );
+    if (hand.length <= 1 && goCheck.allowed) {
+      if (hand.length === 1) {
+        const last = { ...hand[0], faceUp: true };
+        discardPile.push(last);
+        hand = [];
+      }
+      set({
+        canasta: {
+          ...c,
+          stock,
+          discardPile,
+          hands: { ...c.hands, [seat]: [] },
+          feet,
+          inFoot,
+          redThrees,
+          melds,
+          nsOpened,
+          ewOpened,
+        },
+      });
+      finishCanastaRound(team, false, `${seat} (${team}) sort et ferme la manche !`);
+      return;
+    }
+
+    // 6. AI discards 1 card
+    const discarded = hand.length > 0 ? chooseAiDiscard(hand, c.variant) : null;
+    if (discarded) {
+      hand = hand.filter((x) => x.id !== discarded.id);
+      discardPile.push({ ...discarded, faceUp: true });
+      if (isWildCard(discarded) || isBlackThree(discarded)) {
+        isFrozen = true;
+      }
+    }
+
+    const nextSeat = CANASTA_SEATS[(CANASTA_SEATS.indexOf(seat) + 1) % 4];
+    const nextPhase = nextSeat === 'S' ? 'DRAW' : 'DRAW';
+
+    set({
+      canasta: {
+        ...c,
+        phase: nextPhase,
+        currentTurn: nextSeat,
+        stock,
+        discardPile,
+        isFrozen,
+        hands: { ...c.hands, [seat]: hand },
+        feet,
+        inFoot,
+        redThrees,
+        melds,
+        nsOpened,
+        ewOpened,
+        statusText:
+          nextSeat === 'S'
+            ? `${seat} défausse ${discarded ? discarded.rank : ''}. À vous de piocher ou prendre la défausse.`
+            : `${seat} défausse ${discarded ? discarded.rank : ''} · Tour de ${nextSeat}…`,
+      },
+    });
+
+    if (nextSeat !== 'S') {
+      schedule(() => stepCanastaAi(), 520);
+    }
+  };
+
   return {
     activeScreen: 'CONCIERGERIE',
     feltTheme: init.feltTheme,
@@ -746,6 +1045,31 @@ export const useSalonStore = create<SalonStoreState>((set, get) => {
       ewTricks: 0,
       nsHcp: 0,
       statusText: 'Distribuez les 52 cartes pour ouvrir la Boîte d’Enchères Duplicate.',
+    },
+
+    canasta: {
+      variant: 'classic',
+      phase: 'READY',
+      dealer: 'W',
+      currentTurn: 'S',
+      stock: [],
+      discardPile: [],
+      isFrozen: false,
+      hands: { N: [], E: [], S: [], W: [] },
+      feet: { N: [], E: [], S: [], W: [] },
+      inFoot: { N: false, E: false, S: false, W: false },
+      redThrees: { NS: [], EW: [] },
+      melds: [],
+      nsScore: 0,
+      ewScore: 0,
+      nsOpened: false,
+      ewOpened: false,
+      pendingOpeningIds: [],
+      pendingOpeningPoints: 0,
+      selectedCardIds: [],
+      hadMeldedBeforeTurn: false,
+      lastRoundBreakdown: null,
+      statusText: 'Choisissez votre variante (Classique, Moderne, Hand & Foot, Samba, Bolivia) et distribuez.',
     },
 
     poker: {
@@ -1102,6 +1426,553 @@ export const useSalonStore = create<SalonStoreState>((set, get) => {
         },
       });
       schedule(() => stepBridgePlay(), 380);
+    },
+
+    // ===========================
+    // CANASTA & VARIANTS ENGINE
+    // ===========================
+    canastaSetVariant: (variant) => {
+      clearTimers();
+      epochCounter += 1;
+      soundEngine.playUiClick();
+      const spec = CANASTA_VARIANTS[variant];
+      set((st) => ({
+        canasta: {
+          ...st.canasta,
+          variant,
+          phase: 'READY',
+          stock: [],
+          discardPile: [],
+          isFrozen: false,
+          hands: { N: [], E: [], S: [], W: [] },
+          feet: { N: [], E: [], S: [], W: [] },
+          inFoot: { N: false, E: false, S: false, W: false },
+          redThrees: { NS: [], EW: [] },
+          melds: [],
+          nsScore: 0,
+          ewScore: 0,
+          nsOpened: false,
+          ewOpened: false,
+          pendingOpeningIds: [],
+          pendingOpeningPoints: 0,
+          selectedCardIds: [],
+          lastRoundBreakdown: null,
+          statusText: `${spec.name} sélectionnée : ${spec.summary}`,
+        },
+      }));
+    },
+
+    canastaNewDeal: () => {
+      clearTimers();
+      epochCounter += 1;
+      const s = get();
+      if (s.bankroll < 200) return;
+
+      const c = s.canasta;
+      const spec = CANASTA_VARIANTS[c.variant];
+      soundEngine.playShuffle();
+
+      // Reset match totals if a partnership already reached target score
+      const matchReset =
+        c.nsScore >= spec.targetMatchScore || c.ewScore >= spec.targetMatchScore;
+      const baseNsScore = matchReset ? 0 : c.nsScore;
+      const baseEwScore = matchReset ? 0 : c.ewScore;
+
+      let stock = createCanastaShoe(c.variant);
+      const hands: Record<SeatId, CardData[]> = { N: [], E: [], S: [], W: [] };
+      const feet: Record<SeatId, CardData[]> = { N: [], E: [], S: [], W: [] };
+      const redThrees: { NS: CardData[]; EW: CardData[] } = { NS: [], EW: [] };
+
+      for (const seat of CANASTA_SEATS) {
+        const rawHand = stock.splice(-spec.handSize);
+        const team: 'NS' | 'EW' = seat === 'N' || seat === 'S' ? 'NS' : 'EW';
+        const ext = extractRedThreesFromCards(rawHand, stock, seat === 'S');
+        stock = ext.stock;
+        hands[seat] = ext.hand;
+        redThrees[team].push(...ext.redThrees);
+
+        if (spec.hasFoot) {
+          feet[seat] = stock.splice(-spec.footSize).map((x) => ({ ...x, faceUp: false }));
+        }
+      }
+
+      // Flip initial discard (never start frozen on a Red 3; replace if Red 3)
+      let firstDiscard = stock.pop()!;
+      while (firstDiscard && firstDiscard.rank === '3' && (firstDiscard.suit === 'hearts' || firstDiscard.suit === 'diamonds') && stock.length > 0) {
+        redThrees.NS.push({ ...firstDiscard, faceUp: true });
+        firstDiscard = stock.pop()!;
+      }
+      const discardPile = firstDiscard ? [{ ...firstDiscard, faceUp: true }] : [];
+      const isFrozen = firstDiscard ? isWildCard(firstDiscard) || isBlackThree(firstDiscard) : false;
+
+      set({
+        bankroll: s.bankroll - 200,
+        canasta: {
+          ...c,
+          phase: 'DRAW',
+          dealer: CANASTA_SEATS[(CANASTA_SEATS.indexOf(c.dealer) + 1) % 4],
+          currentTurn: 'S',
+          stock,
+          discardPile,
+          isFrozen,
+          hands,
+          feet,
+          inFoot: { N: false, E: false, S: false, W: false },
+          redThrees,
+          melds: [],
+          nsScore: baseNsScore,
+          ewScore: baseEwScore,
+          nsOpened: false,
+          ewOpened: false,
+          pendingOpeningIds: [],
+          pendingOpeningPoints: 0,
+          selectedCardIds: [],
+          hadMeldedBeforeTurn: false,
+          lastRoundBreakdown: null,
+          statusText: `Donne ${spec.shortName} prête ! Piochez ${spec.drawCount} carte${spec.drawCount > 1 ? 's' : ''} ou prenez la défausse.`,
+        },
+      });
+    },
+
+    canastaDrawStock: () => {
+      const c = get().canasta;
+      if (c.phase !== 'DRAW' || c.currentTurn !== 'S') return;
+      const spec = CANASTA_VARIANTS[c.variant];
+      if (c.stock.length === 0) {
+        finishCanastaRound(null, false, 'Pioche épuisée !');
+        return;
+      }
+
+      let stock = [...c.stock];
+      const rawDrawn: CardData[] = [];
+      for (let i = 0; i < spec.drawCount && stock.length > 0; i++) {
+        rawDrawn.push(stock.pop()!);
+      }
+      const ext = extractRedThreesFromCards(rawDrawn, stock, true);
+      stock = ext.stock;
+      const nextHand = sortCanastaHand([...c.hands.S, ...ext.hand]);
+      const hadMeldedBeforeTurn = c.melds.some((m) => m.team === 'NS');
+
+      soundEngine.playCardDeal();
+      set({
+        canasta: {
+          ...c,
+          phase: 'MELD_DISCARD',
+          stock,
+          hands: { ...c.hands, S: nextHand },
+          redThrees: { ...c.redThrees, NS: [...c.redThrees.NS, ...ext.redThrees] },
+          pendingOpeningIds: [],
+          pendingOpeningPoints: 0,
+          hadMeldedBeforeTurn,
+          statusText:
+            ext.redThrees.length > 0
+              ? `3 Rouge (+100) exposé et remplacé ! Posez vos combinaisons ou sélectionnez 1 carte à défausser.`
+              : `Vous avez pioché ${spec.drawCount} carte${spec.drawCount > 1 ? 's' : ''}. Posez vos combinaisons ou défaussez 1 carte.`,
+        },
+      });
+    },
+
+    canastaTakePile: () => {
+      const c = get().canasta;
+      if (c.phase !== 'DRAW' || c.currentTurn !== 'S') return;
+      const nsMelds = c.melds.filter((m) => m.team === 'NS');
+      const requiredPts = getRequiredInitialMeld(c.nsScore, c.variant);
+      const plan = evaluateDiscardPickup(
+        c.hands.S,
+        c.discardPile,
+        c.isFrozen,
+        c.nsOpened,
+        requiredPts,
+        nsMelds
+      );
+
+      if (!plan.canTake) {
+        soundEngine.playUiClick();
+        set({ canasta: { ...c, statusText: plan.reason || 'Prise de défausse impossible.' } });
+        return;
+      }
+
+      const top = { ...c.discardPile[c.discardPile.length - 1], faceUp: true };
+      const restPile = c.discardPile.slice(0, -1).map((x) => ({ ...x, faceUp: true }));
+      const usedSet = new Set(plan.usedHandCardIds);
+      const usedHandCards = c.hands.S.filter((x) => usedSet.has(x.id));
+      let nextMelds = [...c.melds];
+      let nsOpened = c.nsOpened;
+
+      if (plan.mode === 'extend_meld' && plan.targetMeldId) {
+        nextMelds = nextMelds.map((m) => {
+          if (m.id !== plan.targetMeldId) return m;
+          const nextCards = [...m.cards, top];
+          const meta = computeMeldMeta(nextCards, m.kind, c.variant, m.rankLabel);
+          return { ...m, cards: nextCards, ...meta };
+        });
+      } else {
+        const combined = [top, ...usedHandCards];
+        const meta = computeMeldMeta(combined, 'rank', c.variant, top.rank);
+        nextMelds.push({
+          id: `meld_${Date.now()}`,
+          team: 'NS',
+          kind: 'rank',
+          rankLabel: top.rank,
+          cards: combined,
+          ...meta,
+        });
+        nsOpened = true;
+      }
+
+      const ext = extractRedThreesFromCards(restPile, c.stock, true);
+      const nextHand = sortCanastaHand([
+        ...c.hands.S.filter((x) => !usedSet.has(x.id)),
+        ...ext.hand,
+      ]);
+
+      soundEngine.playChipClink(3);
+      set({
+        canasta: {
+          ...c,
+          phase: 'MELD_DISCARD',
+          stock: ext.stock,
+          discardPile: [],
+          isFrozen: false,
+          hands: { ...c.hands, S: nextHand },
+          redThrees: { ...c.redThrees, NS: [...c.redThrees.NS, ...ext.redThrees] },
+          melds: nextMelds,
+          nsOpened,
+          selectedCardIds: [],
+          pendingOpeningIds: [],
+          pendingOpeningPoints: 0,
+          hadMeldedBeforeTurn: c.melds.some((m) => m.team === 'NS'),
+          statusText: `Défausse récupérée (${c.discardPile.length} cartes) et combinée sur ${top.rank} ! Posez ou défaussez 1 carte.`,
+        },
+      });
+    },
+
+    canastaToggleSelectCard: (cardId) => {
+      const c = get().canasta;
+      if (c.phase !== 'MELD_DISCARD' || c.currentTurn !== 'S') return;
+      soundEngine.playUiClick();
+      const exists = c.selectedCardIds.includes(cardId);
+      set({
+        canasta: {
+          ...c,
+          selectedCardIds: exists
+            ? c.selectedCardIds.filter((id) => id !== cardId)
+            : [...c.selectedCardIds, cardId],
+        },
+      });
+    },
+
+    canastaMeldSelected: () => {
+      const c = get().canasta;
+      if (c.phase !== 'MELD_DISCARD' || c.currentTurn !== 'S') return;
+      const spec = CANASTA_VARIANTS[c.variant];
+      const selected = c.hands.S.filter((x) => c.selectedCardIds.includes(x.id));
+      const evalRes = evaluateSelectedNewMeld(selected, c.variant);
+
+      if (!evalRes.valid || !evalRes.sortedCards || !evalRes.kind || !evalRes.rankLabel) {
+        set({ canasta: { ...c, statusText: evalRes.error || 'Combinaison invalide.' } });
+        return;
+      }
+
+      const remaining = c.hands.S.filter((x) => !c.selectedCardIds.includes(x.id));
+      const nsMelds = c.melds.filter((m) => m.team === 'NS');
+      const meta = computeMeldMeta(evalRes.sortedCards, evalRes.kind, c.variant, evalRes.rankLabel);
+      const newMeld: CanastaMeld = {
+        id: `meld_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+        team: 'NS',
+        kind: evalRes.kind,
+        rankLabel: evalRes.rankLabel,
+        suit: evalRes.suit,
+        cards: evalRes.sortedCards.map((x) => ({ ...x, faceUp: true })),
+        ...meta,
+      };
+
+      const nextMelds = [...c.melds, newMeld];
+      const requiredOpen = getRequiredInitialMeld(c.nsScore, c.variant);
+      const nextPendingPts = c.nsOpened ? 0 : c.pendingOpeningPoints + evalRes.points;
+      const nextPendingIds = c.nsOpened ? [] : [...c.pendingOpeningIds, newMeld.id];
+      const nowOpened = c.nsOpened || nextPendingPts >= requiredOpen;
+
+      // Check Hand & Foot foot pickup if hand emptied
+      let nextHands = { ...c.hands, S: remaining };
+      let nextFeet = { ...c.feet };
+      let nextInFoot = { ...c.inFoot };
+      let nextStock = [...c.stock];
+      let nextRedNs = [...c.redThrees.NS];
+
+      if (spec.hasFoot && remaining.length === 0 && !c.inFoot.S && c.feet.S.length > 0) {
+        const footExt = extractRedThreesFromCards(c.feet.S, nextStock, true);
+        nextStock = footExt.stock;
+        nextRedNs = [...nextRedNs, ...footExt.redThrees];
+        nextHands = { ...nextHands, S: footExt.hand };
+        nextFeet = { ...nextFeet, S: [] };
+        nextInFoot = { ...nextInFoot, S: true };
+      }
+
+      // Check immediate Going Out if 0 cards remain
+      if (nextHands.S.length === 0) {
+        const goRes = canTeamGoOut([...nsMelds, newMeld], c.variant);
+        if (!nowOpened || !goRes.allowed) {
+          set({
+            canasta: {
+              ...c,
+              statusText: !nowOpened
+                ? `Ouverture minimale de ${requiredOpen} pts non atteinte.`
+                : goRes.reason || 'Impossible de sortir maintenant (gardez au moins 1 carte à défausser).',
+            },
+          });
+          return;
+        }
+        set({
+          canasta: {
+            ...c,
+            stock: nextStock,
+            hands: nextHands,
+            feet: nextFeet,
+            inFoot: nextInFoot,
+            redThrees: { ...c.redThrees, NS: nextRedNs },
+            melds: nextMelds,
+            nsOpened: true,
+            pendingOpeningIds: [],
+            pendingOpeningPoints: 0,
+            selectedCardIds: [],
+          },
+        });
+        finishCanastaRound('NS', !c.hadMeldedBeforeTurn, 'Vous posez votre dernière carte et sortez !');
+        return;
+      }
+
+      soundEngine.playChipClink(2);
+      set({
+        canasta: {
+          ...c,
+          stock: nextStock,
+          hands: nextHands,
+          feet: nextFeet,
+          inFoot: nextInFoot,
+          redThrees: { ...c.redThrees, NS: nextRedNs },
+          melds: nextMelds,
+          nsOpened: nowOpened,
+          pendingOpeningIds: nowOpened ? [] : nextPendingIds,
+          pendingOpeningPoints: nowOpened ? 0 : nextPendingPts,
+          selectedCardIds: [],
+          statusText: nowOpened
+            ? `Combinaison ${evalRes.rankLabel} posée (+${evalRes.points} pts).`
+            : `Ouverture en cours : ${nextPendingPts} / ${requiredOpen} pts (posez encore ${requiredOpen - nextPendingPts} pts ou annulez).`,
+        },
+      });
+    },
+
+    canastaExtendMeld: (meldId) => {
+      const c = get().canasta;
+      if (c.phase !== 'MELD_DISCARD' || c.currentTurn !== 'S') return;
+      const target = c.melds.find((m) => m.id === meldId && m.team === 'NS');
+      if (!target) return;
+
+      const selected = c.hands.S.filter((x) => c.selectedCardIds.includes(x.id));
+      const check = canAddCardsToMeld(selected, target, c.variant);
+      if (!check.valid || !check.nextCards) {
+        set({ canasta: { ...c, statusText: check.error || 'Extension invalide.' } });
+        return;
+      }
+
+      const spec = CANASTA_VARIANTS[c.variant];
+      const remaining = c.hands.S.filter((x) => !c.selectedCardIds.includes(x.id));
+      const addedPts = selected.reduce((sum, x) => sum + getCanastaCardPoints(x, c.variant), 0);
+      const nextMeta = computeMeldMeta(check.nextCards, target.kind, c.variant, target.rankLabel);
+      const nextMelds = c.melds.map((m) =>
+        m.id === meldId ? { ...m, cards: check.nextCards!.map((x) => ({ ...x, faceUp: true })), ...nextMeta } : m
+      );
+
+      let nextHands = { ...c.hands, S: remaining };
+      let nextFeet = { ...c.feet };
+      let nextInFoot = { ...c.inFoot };
+      let nextStock = [...c.stock];
+      let nextRedNs = [...c.redThrees.NS];
+
+      if (spec.hasFoot && remaining.length === 0 && !c.inFoot.S && c.feet.S.length > 0) {
+        const footExt = extractRedThreesFromCards(c.feet.S, nextStock, true);
+        nextStock = footExt.stock;
+        nextRedNs = [...nextRedNs, ...footExt.redThrees];
+        nextHands = { ...nextHands, S: footExt.hand };
+        nextFeet = { ...nextFeet, S: [] };
+        nextInFoot = { ...nextInFoot, S: true };
+      }
+
+      if (nextHands.S.length === 0) {
+        const goRes = canTeamGoOut(nextMelds.filter((m) => m.team === 'NS'), c.variant);
+        if (!c.nsOpened || !goRes.allowed) {
+          set({
+            canasta: {
+              ...c,
+              statusText: goRes.reason || 'Impossible de vider votre main sans respecter les Canastas requises.',
+            },
+          });
+          return;
+        }
+        set({
+          canasta: {
+            ...c,
+            stock: nextStock,
+            hands: nextHands,
+            feet: nextFeet,
+            inFoot: nextInFoot,
+            redThrees: { ...c.redThrees, NS: nextRedNs },
+            melds: nextMelds,
+            selectedCardIds: [],
+          },
+        });
+        finishCanastaRound('NS', !c.hadMeldedBeforeTurn, 'Vous complétez vos combinaisons et sortez !');
+        return;
+      }
+
+      const requiredOpen = getRequiredInitialMeld(c.nsScore, c.variant);
+      const nextPendingPts = c.nsOpened ? 0 : c.pendingOpeningPoints + addedPts;
+      const nowOpened = c.nsOpened || nextPendingPts >= requiredOpen;
+
+      soundEngine.playChipClink(nextMeta.isCanasta ? 4 : 1);
+      set({
+        canasta: {
+          ...c,
+          stock: nextStock,
+          hands: nextHands,
+          feet: nextFeet,
+          inFoot: nextInFoot,
+          redThrees: { ...c.redThrees, NS: nextRedNs },
+          melds: nextMelds,
+          nsOpened: nowOpened,
+          pendingOpeningIds: nowOpened ? [] : c.pendingOpeningIds,
+          pendingOpeningPoints: nowOpened ? 0 : nextPendingPts,
+          selectedCardIds: [],
+          statusText: nextMeta.isCanasta
+            ? `★ CANASTA ${nextMeta.isPure ? 'PURE' : 'IMPURE'} sur ${target.rankLabel} (+${nextMeta.bonus} pts) !`
+            : `Carte(s) ajoutée(s) à ${target.rankLabel}.`,
+        },
+      });
+    },
+
+    canastaCancelPendingOpening: () => {
+      const c = get().canasta;
+      if (c.pendingOpeningIds.length === 0) return;
+      const pendingSet = new Set(c.pendingOpeningIds);
+      const returnedCards = c.melds
+        .filter((m) => pendingSet.has(m.id))
+        .flatMap((m) => m.cards);
+      const nextMelds = c.melds.filter((m) => !pendingSet.has(m.id));
+      const nextHand = sortCanastaHand([...c.hands.S, ...returnedCards]);
+      soundEngine.playUiClick();
+      set({
+        canasta: {
+          ...c,
+          hands: { ...c.hands, S: nextHand },
+          melds: nextMelds,
+          pendingOpeningIds: [],
+          pendingOpeningPoints: 0,
+          selectedCardIds: [],
+          statusText: 'Ouverture annulée — cartes remises en main.',
+        },
+      });
+    },
+
+    canastaDiscardSelected: () => {
+      const c = get().canasta;
+      if (c.phase !== 'MELD_DISCARD' || c.currentTurn !== 'S') return;
+
+      if (c.pendingOpeningIds.length > 0 && !c.nsOpened) {
+        const req = getRequiredInitialMeld(c.nsScore, c.variant);
+        set({
+          canasta: {
+            ...c,
+            statusText: `Ouverture incomplète (${c.pendingOpeningPoints}/${req} pts) : ajoutez des points ou cliquez Annuler Ouverture.`,
+          },
+        });
+        return;
+      }
+
+      if (c.selectedCardIds.length !== 1) {
+        set({
+          canasta: {
+            ...c,
+            statusText: 'Sélectionnez exactement 1 carte en main à défausser.',
+          },
+        });
+        return;
+      }
+
+      const card = c.hands.S.find((x) => x.id === c.selectedCardIds[0]);
+      if (!card) return;
+
+      const remaining = c.hands.S.filter((x) => x.id !== card.id);
+      const spec = CANASTA_VARIANTS[c.variant];
+      const discardPile = [...c.discardPile, { ...card, faceUp: true }];
+      const isFrozen = c.isFrozen || isWildCard(card) || isBlackThree(card);
+
+      // Hand & Foot pickup if discarding last Hand card
+      if (spec.hasFoot && remaining.length === 0 && !c.inFoot.S && c.feet.S.length > 0) {
+        const footExt = extractRedThreesFromCards(c.feet.S, c.stock, true);
+        soundEngine.playCardFlip();
+        set({
+          canasta: {
+            ...c,
+            phase: 'DRAW',
+            currentTurn: 'W',
+            stock: footExt.stock,
+            discardPile,
+            isFrozen,
+            hands: { ...c.hands, S: footExt.hand },
+            feet: { ...c.feet, S: [] },
+            inFoot: { ...c.inFoot, S: true },
+            redThrees: { ...c.redThrees, NS: [...c.redThrees.NS, ...footExt.redThrees] },
+            selectedCardIds: [],
+            statusText: 'Main vidée — Vous prenez votre Pied (11 cartes) ! Tour d’Ouest…',
+          },
+        });
+        schedule(() => stepCanastaAi(), 500);
+        return;
+      }
+
+      // Check Going Out on discard
+      if (remaining.length === 0) {
+        const goRes = canTeamGoOut(
+          c.melds.filter((m) => m.team === 'NS'),
+          c.variant
+        );
+        if (!goRes.allowed) {
+          set({
+            canasta: {
+              ...c,
+              statusText: goRes.reason || 'Impossible de défausser votre dernière carte sans les Canastas requises.',
+            },
+          });
+          return;
+        }
+        set({
+          canasta: {
+            ...c,
+            discardPile,
+            isFrozen,
+            hands: { ...c.hands, S: [] },
+            selectedCardIds: [],
+          },
+        });
+        finishCanastaRound('NS', !c.hadMeldedBeforeTurn, 'Vous défaussez votre dernière carte et sortez !');
+        return;
+      }
+
+      soundEngine.playCardDeal();
+      set({
+        canasta: {
+          ...c,
+          phase: 'DRAW',
+          currentTurn: 'W',
+          discardPile,
+          isFrozen,
+          hands: { ...c.hands, S: remaining },
+          selectedCardIds: [],
+          statusText: `Vous défaussez ${card.rank}. Tour d’Ouest…`,
+        },
+      });
+      schedule(() => stepCanastaAi(), 500);
     },
 
     // ===========================
