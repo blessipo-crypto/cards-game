@@ -78,6 +78,7 @@ if (builderPath) {
   const yml = fs.readFileSync(builderPath, 'utf8');
   for (const needle of [
     'requestedExecutionLevel: asInvoker',
+    'signtoolOptions:',
     'signingHashAlgorithms:',
     'sha256',
     'rfc3161TimeStampServer:',
