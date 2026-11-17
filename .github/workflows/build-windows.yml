@@ -17,13 +17,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
       - name: Install application dependencies
-        run: npm ci
+        shell: pwsh
+        run: |
+          if (Test-Path "package-lock.json") {
+            npm ci
+          } else {
+            npm install --no-audit --no-fund
+          }
 
       - name: Install Electron desktop packager (CI only)
-        run: npm install --no-save electron electron-builder
+        run: npm install --no-save --no-audit --no-fund electron electron-builder
 
       - name: Generate Windows application icon
         run: npm run build:icon
