@@ -1,14 +1,22 @@
 {
-  "name": "react-example",
+  "name": "royal-velvet-suite",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Royal Velvet Suite — Jeu PC de salon Monte-Carlo (Belote, Bridge, Poker, Blackjack, Baccarat)",
+  "author": "Royal Velvet Suite",
+  "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "clean": "rm -rf dist dist-win server.js",
+    "lint": "tsc --noEmit",
+    "build:icon": "node scripts/generate-win-icon.mjs",
+    "desktop:check": "node scripts/check-desktop-readiness.mjs",
+    "pack:win": "npm run build:icon && npm run build && npx --yes electron-builder --config electron-builder.yml --win --x64 --publish never",
+    "pack:win:unsigned": "npm run build:icon && npm run build && npx --yes electron-builder --config electron-builder.yml --win --x64 -c.win.signAndEditExecutable=false --publish never",
+    "verify:win-sign": "powershell -ExecutionPolicy Bypass -File scripts/verify-signature.ps1"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

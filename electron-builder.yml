@@ -1,0 +1,55 @@
+appId: com.royalvelvetsuite.montecarlo
+productName: Royal Velvet Suite
+copyright: Copyright © 2026 Royal Velvet Suite
+asar: true
+# Standard compression only (never UPX/obfuscated packers) to minimize AV false-positive heuristics
+compression: normal
+npmRebuild: false
+
+directories:
+  output: dist-win
+  buildResources: build
+
+files:
+  - dist/**/*
+  - electron/**/*
+  - package.json
+  - "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}"
+  - "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}"
+  - "!**/*.map"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  icon: build/icon.ico
+  # asInvoker avoids UAC elevation triggers and reduces Windows SmartScreen/AV suspicion
+  requestedExecutionLevel: asInvoker
+  signAndEditExecutable: true
+  signingHashAlgorithms:
+    - sha256
+  rfc3161TimeStampServer: http://timestamp.digicert.com
+  publisherName:
+    - Royal Velvet Suite
+  artifactName: Royal-Velvet-Suite-${version}-Setup-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Royal Velvet Suite
+  uninstallDisplayName: Royal Velvet Suite
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  include: build/installer.nsh
+  deleteAppDataOnUninstall: false
+  artifactName: Royal-Velvet-Suite-${version}-Setup-${arch}.${ext}
+
+portable:
+  artifactName: Royal-Velvet-Suite-${version}-Portable-${arch}.exe

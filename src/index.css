@@ -145,6 +145,15 @@
   border-radius: 3px;
 }
 
+/* Electron frameless desktop window drag regions */
+.desktop-drag {
+  -webkit-app-region: drag;
+}
+
+.desktop-no-drag {
+  -webkit-app-region: no-drag;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

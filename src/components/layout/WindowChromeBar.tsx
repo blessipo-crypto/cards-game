@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, Coins, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, Coins, Copy, Minus, Square, Volume2, VolumeX, X } from 'lucide-react';
 import { useSalonStore } from '../../store/useSalonStore';
 import { FeltThemeId } from '../../types/game';
 
@@ -24,6 +24,25 @@ export const WindowChromeBar: React.FC = () => {
   const toggleMute = useSalonStore((s) => s.toggleMute);
 
   const [fps, setFps] = useState(60);
+  const [isMaximized, setIsMaximized] = useState(false);
+  const isDesktop = Boolean(typeof window !== 'undefined' && window.desktopBridge?.isDesktop);
+
+  // Sync Electron desktop maximize/restore state
+  useEffect(() => {
+    const bridge = window.desktopBridge;
+    if (!bridge?.isDesktop) return;
+    let active = true;
+    bridge.isMaximized().then((val) => {
+      if (active) setIsMaximized(val);
+    }).catch(() => {});
+    const unsubscribe = bridge.onMaximizedChange((val) => {
+      if (active) setIsMaximized(val);
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
 
   // Real requestAnimationFrame 60 FPS telemetry counter
   useEffect(() => {
@@ -46,7 +65,7 @@ export const WindowChromeBar: React.FC = () => {
   }, []);
 
   return (
-    <header className="relative z-30 flex h-14 w-full shrink-0 items-center justify-between border-b border-[#D4AF37]/30 bg-[#080A0F]/95 px-5 backdrop-blur-md">
+    <header className="desktop-drag relative z-30 flex h-14 w-full shrink-0 items-center justify-between border-b border-[#D4AF37]/30 bg-[#080A0F]/95 px-5 backdrop-blur-md">
       {/* Left: Brand Crest & Salon Return */}
       <div className="flex items-center gap-4">
         {activeScreen !== 'CONCIERGERIE' && (
@@ -54,7 +73,7 @@ export const WindowChromeBar: React.FC = () => {
             type="button"
             onClick={() => setScreen('CONCIERGERIE')}
             aria-label="Retour à la Conciergerie"
-            className="chamfer-clip-sm flex h-9 cursor-pointer items-center gap-1.5 border border-[#D4AF37]/40 bg-[#10141E] px-3 text-xs font-semibold text-[#F3E5AB] transition-colors hover:border-[#F3E5AB] hover:bg-[#1A2030] whitespace-nowrap"
+            className="desktop-no-drag chamfer-clip-sm flex h-9 cursor-pointer items-center gap-1.5 border border-[#D4AF37]/40 bg-[#10141E] px-3 text-xs font-semibold text-[#F3E5AB] transition-colors hover:border-[#F3E5AB] hover:bg-[#1A2030] whitespace-nowrap"
           >
             <ArrowLeft className="h-3.5 w-3.5 text-[#D4AF37]" />
             <span>Conciergerie</span>
@@ -102,7 +121,7 @@ export const WindowChromeBar: React.FC = () => {
             type="button"
             onClick={cashierTopUp}
             aria-label="Caisse rapide ajouter 50 000 euros"
-            className="gold-foil-btn chamfer-clip-sm flex h-8 cursor-pointer items-center gap-1.5 px-3 text-[11px] font-bold tracking-wide whitespace-nowrap"
+            className="desktop-no-drag gold-foil-btn chamfer-clip-sm flex h-8 cursor-pointer items-center gap-1.5 px-3 text-[11px] font-bold tracking-wide whitespace-nowrap"
           >
             <Coins className="h-3.5 w-3.5" />
             <span>+50 000 €</span>
@@ -110,8 +129,8 @@ export const WindowChromeBar: React.FC = () => {
         </div>
       </div>
 
-      {/* Right: Live Felt Selector, Audio & 60 FPS Telemetry */}
-      <div className="flex items-center gap-3">
+      {/* Right: Live Felt Selector, Audio, Telemetry & Desktop Window Controls */}
+      <div className="desktop-no-drag flex items-center gap-3">
         <div
           role="group"
           aria-label="Sélecteur de feutrine"
@@ -156,6 +175,35 @@ export const WindowChromeBar: React.FC = () => {
           <span className="text-[#D4AF37]">{fps}</span>
           <span>FPS</span>
         </div>
+
+        {isDesktop && (
+          <div className="flex items-center gap-1 border-l border-[#D4AF37]/20 pl-3">
+            <button
+              type="button"
+              onClick={() => window.desktopBridge?.minimize()}
+              aria-label="Réduire la fenêtre"
+              className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-[#C7BFB0] transition-colors hover:bg-[#1A2030] hover:text-[#F3E5AB]"
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => window.desktopBridge?.toggleMaximize()}
+              aria-label={isMaximized ? 'Restaurer la fenêtre' : 'Agrandir la fenêtre'}
+              className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-[#C7BFB0] transition-colors hover:bg-[#1A2030] hover:text-[#F3E5AB]"
+            >
+              {isMaximized ? <Copy className="h-3 w-3" /> : <Square className="h-3 w-3" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => window.desktopBridge?.close()}
+              aria-label="Fermer l'application"
+              className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-[#C7BFB0] transition-colors hover:bg-[#9E1B24] hover:text-white"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );

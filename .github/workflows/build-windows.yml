@@ -1,0 +1,58 @@
+name: Build & Sign Windows Desktop App
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Install Electron desktop packager (CI only)
+        run: npm install --no-save electron electron-builder
+
+      - name: Generate Windows application icon
+        run: npm run build:icon
+
+      - name: Build production web bundle
+        run: npm run build
+
+      - name: Build Windows NSIS Setup & Portable EXE
+        shell: pwsh
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          npx electron-builder --win --x64 --publish never
+
+      - name: Verify Authenticode Signature & Run Windows Defender Scan
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrEmpty("${{ secrets.WIN_CSC_LINK }}")) {
+            Write-Warning "WIN_CSC_LINK secret not set; running Defender scan & checksum check with -AllowUnsigned."
+            powershell -ExecutionPolicy Bypass -File scripts/verify-signature.ps1 -AllowUnsigned
+          } else {
+            powershell -ExecutionPolicy Bypass -File scripts/verify-signature.ps1
+          }
+
+      - name: Upload Windows Installer, Portable EXE & SHA256SUMS
+        uses: actions/upload-artifact@v4
+        with:
+          name: royal-velvet-suite-win-x64
+          path: |
+            dist-win/*.exe
+            dist-win/SHA256SUMS.txt
